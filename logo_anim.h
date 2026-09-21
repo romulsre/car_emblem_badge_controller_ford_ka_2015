@@ -7,8 +7,8 @@ extern "C" {
 #endif
 
 /**
- * @brief Отрисовка векторной boot-анимации заставки
- * @param panel_handle Дескриптор дисплея ESP-LCD
+ * @brief Draw the vector boot-logo animation.
+ * @param panel_handle ESP-LCD display handle.
  */
 void logo_draw_bitmap(esp_lcd_panel_handle_t panel_handle);
 

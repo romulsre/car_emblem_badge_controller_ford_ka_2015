@@ -1,31 +1,30 @@
 #include <Arduino.h>
 #include <vector>
 
-// Подключаем наши новые файлы управления памятью и командами
+// Command and storage management.
 #include "commands_handler.h"
 
-// Стандартные библиотеки для периферии платы
+// Board peripheral drivers.
 #include "I2C_Driver.h"
 #include "TCA9554PWR.h"
 #include "Display_ST77916.h"
-#include "SD_Card.h"
-#include "IMG_SD.h"
+#include "MediaStorage.h"
 //#include "Touch_CST816.h"
 #include "ble_handler.h"
 #include "eye_animation.h"
 
-// Переменные для управления анимацией
+// Animation state.
 bool isPlayingAnimation = false;
-int currentAnimationNum = 0; // 0 - нет, 1 - anim1, 2 - anim2
-int animCurrentFrame = 1;           // Номер текущего кадра (1-6)
-unsigned long lastFrameTime = 0;    // Таймер последнего кадра
-const unsigned long frameDelay = 80; // Задержка между кадрами (80мс ~ 12.5 FPS)
+int currentAnimationNum = 0; // 0: none, 1: anim1, 2: anim2
+int animCurrentFrame = 1;           // Current frame number.
+unsigned long lastFrameTime = 0;    // Timestamp of the previous frame.
+const unsigned long frameDelay = 80; // Frame delay (about 12.5 FPS).
 
-// Размеры BIN картинок фиксированные (360x360)
+// Fixed BIN image dimensions.
 #define IMG_WIDTH  360 
 #define IMG_HEIGHT 360
 
-// Динамический массив для путей к файлам во ВНУТРЕННЕЙ памяти
+// Paths of images in internal storage.
 std::vector<String> myBinFiles;
 
 static bool isEyeAnimationPlaying = false;
@@ -73,11 +72,11 @@ bool startEyeAnimation(const String& colorArgument) {
   return true;
 }
 
-// Индекс текущей картинки в массиве
+// Index of the current image.
 size_t currentImgIdx = 0;
 
 /**
- * @brief Функция сканирования внутренней памяти (LittleFS)
+ * @brief Scan internal storage (LittleFS).
  */
 void findAllImgInternal(const char* dirName, std::vector<String>& filesVector) {
   filesVector.clear();
@@ -102,7 +101,7 @@ void findAllImgInternal(const char* dirName, std::vector<String>& filesVector) {
 }
 
 /**
- * @brief Неблокирующий проигрыватель анимации
+ * @brief Non-blocking animation player.
  */
 void runAnimationPlayer() {
     if (isEyeAnimationPlaying) {
@@ -114,38 +113,37 @@ void runAnimationPlayer() {
     if (millis() - lastFrameTime >= frameDelay) {
         lastFrameTime = millis();
 
-        // Переменные параметров кадра (будут настроены под конкретную анимацию)
+        // Frame parameters are selected for the active animation.
         String framePath = "";
         uint16_t imgW = 350;
         uint16_t imgH = 217;
         uint16_t maxFrames = 6;
 
-        // Настраиваем параметры в зависимости от выбранной анимации
+        // Configure parameters for the selected animation.
         if (currentAnimationNum == 2) {
-            // Анимация №2: 350x207, 10 кадров
+            // Animation 2: 350x207, 10 frames.
             framePath = "/anim2/a2-" + String(animCurrentFrame) + ".bin";
             imgW = 350;
             imgH = 207;
             maxFrames = 10;
         } else {
-            // Анимация №1: 350x217, 6 кадров
+            // Animation 1: 350x217, 6 frames.
             framePath = "/anim1/a1-" + String(animCurrentFrame) + ".bin";
             imgW = 350;
             imgH = 217;
             maxFrames = 6;
         }
         
-        // Смещение для вывода ровно по центру круглого экрана (360x360):
-        // Формула: start = (360 - размер) / 2
-        uint16_t startX = (360 - imgW) / 2; // Для 350 это будет 5
-        uint16_t startY = (360 - imgH) / 2; // Для 217 -> ~71, для 207 -> ~76
+        // Center the frame on the 360x360 circular display.
+        uint16_t startX = (360 - imgW) / 2;
+        uint16_t startY = (360 - imgH) / 2;
 
-        // Рисуем текущий кадр строго по центру
+        // Draw the current frame at the center.
         Draw_BIN_From_Internal(framePath.c_str(), startX, startY, imgW, imgH);
 
         animCurrentFrame++;
 
-        // Сброс и зацикливание на основе максимального количества кадров текущей анимации
+        // Loop when the last frame has been rendered.
         if (animCurrentFrame > maxFrames) {
             animCurrentFrame = 1; 
         }
@@ -156,34 +154,34 @@ void setup()
 {
   //Serial.begin(115200);
   delay(100);
-  // Инициализация I2C шины и расширителя портов питания
+  // Initialize the I2C bus and power GPIO expander.
   I2C_Init();
   TCA9554PWR_Init(0x00);
   Set_EXIO(EXIO_PIN1, High);
   Set_EXIO(EXIO_PIN2, High);
 
-  // 1. Инициализация дисплея
+  // Initialize the display.
   Backlight_Init();
   LCD_Init();
   Set_Backlight(100);
 
-  // 2. Инициализация тач-скрина CST816
+  // Initialize the CST816 touch controller.
   //Touch_Init();
   //delay(500);
 
-  // 3. Инициализация файловой системы и обработчика команд
+  // Initialize storage and the command handler.
   initCommandsHandler();
   delay(200); 
 
-  // 4. Сканируем файлы в LittleFS (делаем это ОДИН раз при запуске)
+  // Scan LittleFS once at startup.
   findAllImgInternal("/", myBinFiles);
 
-  // 5. Выводим стартовую картинку
+  // Draw the startup image.
   if (!myBinFiles.empty()) {
     Draw_BIN_From_Internal(myBinFiles[currentImgIdx].c_str(), 0, 0, IMG_WIDTH, IMG_HEIGHT);
   }
 
-  // Холостой опрос тача для очистки буфера чипа
+  // Poll touch events to clear the controller buffer.
   /*
   for (int i = 0; i < 5; i++) {
     Touch_Loop();
@@ -192,30 +190,30 @@ void setup()
   touch_data.gesture = NONE;
   */
 
-  // Инициализация BLE
+  // Initialize BLE.
   initBLEHandler();
 }
 
 void loop()
 {
-  // 1. Опрашиваем интерфейсы связи
+  // Poll communication interfaces.
   handleSerialCommands();
   handleBLECommands();
 
-  // 2. Опрашиваем тач-скрин
+  // Poll the touch controller.
   //Touch_Loop(); 
 
-  // 3. Обработка нажатия на экран
+  // Process touch input.
   /*
   if (touch_data.gesture == SINGLE_CLICK) {
-    touch_data.gesture = NONE; // Сбрасываем жест сразу же
+    touch_data.gesture = NONE; // Clear the gesture immediately.
 
-    // Если крутится анимация, любой тап по экрану останавливает её и возвращает статику
+    // Any touch stops an active animation and returns to static content.
     if (isPlayingAnimation) {
         isPlayingAnimation = false;
         currentAnimationNum = 0;
         animCurrentFrame = 1;
-        Clear_Screen_Black(); // Стираем остатки анимации перед выводом картинки
+        Clear_Screen_Black(); // Clear residual animation pixels before drawing.
     }
 
     if (!myBinFiles.empty()) {
@@ -227,7 +225,7 @@ void loop()
       //Draw_BIN_From_SD(myBinFiles[currentImgIdx].c_str(), 0, 0, IMG_WIDTH, IMG_HEIGHT);
       Draw_BIN_From_Internal(myBinFiles[currentImgIdx].c_str(), 0, 0, IMG_WIDTH, IMG_HEIGHT);
       
-      // Защита от дребезга контактов тача
+      // Basic touch debounce.
       delay(50); 
       int timeout = 0;
       while (touch_data.points > 0 && timeout < 50) { 
@@ -240,9 +238,9 @@ void loop()
   }
   */
 
-  // 4. Обновляем анимацию (если она активна)
+  // Update the active animation.
   runAnimationPlayer(); 
 
-  // Микро-пауза для стабильности планировщика ESP32 (не блокирует поток)
+  // Brief yield for ESP32 scheduler stability.
   delay(2); 
 }

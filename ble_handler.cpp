@@ -1,11 +1,11 @@
 #include "ble_handler.h"
 #include "commands_handler.h"
-#include "IMG_SD.h" // Твоя библиотека отрисовки
+#include "MediaStorage.h" // Image rendering and storage utilities
 #include <Update.h>
 
-// Даем знать компилятору, что вектор картинок лежит в основном .ino файле
+// Image list is defined by the main sketch.
 extern std::vector<String> myBinFiles; 
-// Даем знать компилятору о флаге запуска анимации из main.ino
+// Animation state is defined by the main sketch.
 extern bool isPlayingAnimation;
 extern int currentAnimationNum;
 
@@ -39,7 +39,7 @@ static void abortOta(const char* status) {
     sendOtaStatus(status);
 }
 
-// Колбэки для отслеживания подключения/отключения телефона
+// Callbacks track phone connections and disconnections.
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) override {
         deviceConnected = true;
@@ -56,7 +56,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
-// Управление OTA: "START <password> <firmware_size>", "END" или "ABORT".
+// OTA control: "START <password> <firmware_size>", "END", or "ABORT".
 class OtaControlCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) override {
         String command = pCharacteristic->getValue().c_str();
@@ -120,8 +120,8 @@ class OtaControlCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-// Принимает сырые байты .bin. Не преобразовывать их в String: прошивка может
-// содержать нулевые байты.
+// Receives raw .bin bytes. Do not convert them to String: firmware may contain
+// null bytes.
 class OtaDataCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) override {
         if (!otaInProgress) {
@@ -149,23 +149,23 @@ class OtaDataCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-// Колбэк для приема данных от телефона (RX)
+// Callback for data received from the phone (RX).
 class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) override {
         ////Serial.println("\n[BLE] --- ВХОДЯЩИЙ ПАКЕТ ---");
         
-        // 1. Получаем данные сразу в Arduino String
+// Read the data directly into an Arduino String.
         String rxValue = pCharacteristic->getValue();
         //Serial.printf("Длина пакета: %d байт\n", rxValue.length());
         
-        // 2. Выводим каждый байт в HEX для анализа скрытых символов
+// Print each byte as HEX when debugging hidden characters.
         //Serial.print("Байты (HEX): ");
         for (size_t i = 0; i < rxValue.length(); i++) {
             //Serial.printf("0x%02X ", (uint8_t)rxValue[i]);
         }
         ////Serial.println();
 
-        // 3. Выводим как текст
+// Print the data as text.
         //Serial.print("Как текст: \"");
         //Serial.print(rxValue);
         ////Serial.println("\"");
@@ -173,7 +173,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         if (rxValue.length() > 0) {
             bleRxBuffer += rxValue;
             
-            // Убираем мусор и пробелы
+// Remove whitespace and invalid input.
             bleRxBuffer.replace("\r", "");
             bleRxBuffer.replace("\n", "");
             bleRxBuffer.trim();
@@ -190,25 +190,25 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 void initBLEHandler() {
     ////Serial.println("\n--- Инициализация Bluetooth (BLE) ---");
 
-    // Создаем BLE устройство с твоим именем
+// Create the BLE device with its advertised name.
     BLEDevice::init("LogoBadge");
 
-    // Создаем BLE Сервер
+// Create the BLE server.
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
 
-    // Создаем сервис Nordic UART
+// Create the Nordic UART service.
     BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    // Создаем характеристику для ОТПРАВКИ данных на телефон (TX)
+// Create the characteristic that sends data to the phone (TX).
     pTxCharacteristic = pService->createCharacteristic(
                           CHARACTERISTIC_UUID_TX,
                           BLECharacteristic::PROPERTY_NOTIFY
                         );
     pTxCharacteristic->addDescriptor(new BLE2902());
 
-    // Создаем характеристику для ПРИЕМА данных с телефона (RX)
-    // Разрешаем обычную запись и запись без подтверждения (WRITE + WRITE_NO_RESPONSE)
+// Create the characteristic that receives data from the phone (RX).
+// Allow normal and unacknowledged writes.
     BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
                                              CHARACTERISTIC_UUID_RX,
                                              BLECharacteristic::PROPERTY_WRITE | 
@@ -228,7 +228,7 @@ void initBLEHandler() {
     pOtaControl->setCallbacks(new OtaControlCallbacks());
     pOtaData->setCallbacks(new OtaDataCallbacks());
 
-    // Стартуем сервис и рекламу (advertising)
+// Start the service and advertising.
     pService->start();
     pOtaService->start();
     pServer->getAdvertising()->addServiceUUID(SERVICE_UUID);
@@ -240,7 +240,7 @@ void initBLEHandler() {
 void sendBLEMessage(const String& message) {
     if (deviceConnected && pTxCharacteristic != nullptr) {
         pTxCharacteristic->setValue(message.c_str());
-        pTxCharacteristic->notify(); // Отправляем пуш-уведомление на телефон
+  pTxCharacteristic->notify(); // Send a notification to the phone.
     }
 }
 
@@ -248,7 +248,7 @@ void handleBLECommands() {
     if (otaRebootPending && static_cast<int32_t>(millis() - otaRebootAt) >= 0) {
         ESP.restart();
     }
-    // Автоматический рестарт рекламы при обрыве связи
+// Restart advertising after a disconnect.
     if (!deviceConnected && oldDeviceConnected) {
         delay(500); 
         pServer->getAdvertising()->start();
@@ -259,10 +259,10 @@ void handleBLECommands() {
         oldDeviceConnected = deviceConnected;
     }
 
-    // Если команда еще не зафиксирована — выходим
+// Exit until a complete command is available.
     if (!bleDataReceived) return;
     
-    // Как только зашли сюда, сразу копируем команду в локальную переменную и освобождаем буфер
+// Copy the command locally and release the receive buffer immediately.
     String currentCmd = bleRxBuffer;
     bleRxBuffer = ""; 
     bleDataReceived = false; 
@@ -271,19 +271,19 @@ void handleBLECommands() {
     sendBLEMessage(executeCommand(currentCmd));
     return;
 
-    // Выводим в Serial для дебага — теперь ты точно увидишь, ЧТО прислал телефон
+// Print the recognized command to Serial for debugging.
     //Serial.print("\n[BLE РЕГИСТР] Распознано: \"");
     //Serial.print(currentCmd);
     ////Serial.println("\"");
 
-    // Парсим команду и аргумент
+// Parse the command and argument.
     int spaceIndex = currentCmd.indexOf(' ');
     String cmdPart = (spaceIndex == -1) ? currentCmd : currentCmd.substring(0, spaceIndex);
     String argPart = (spaceIndex == -1) ? "" : currentCmd.substring(spaceIndex + 1);
     cmdPart.trim();
     argPart.trim();
 
-    // --- КОМАНДА: LIST ---
+// --- LIST COMMAND ---
     if (cmdPart.equalsIgnoreCase("list")) {
         if (myBinFiles.empty()) {
             sendBLEMessage("LittleFS empty\n");
@@ -296,7 +296,7 @@ void handleBLECommands() {
         }
         sendBLEMessage(listResponse);
     } 
-    // --- КОМАНДА: SHOW ---
+// --- SHOW COMMAND ---
     else if (cmdPart.equalsIgnoreCase("show")) {
         if (argPart.length() == 0) {
             sendBLEMessage("0\n"); 
@@ -304,25 +304,25 @@ void handleBLECommands() {
             return;
         }
 
-        // ПРОВЕРКА: Если запросили ПЕРВУЮ анимацию
+// Check whether the first animation was requested.
         if (argPart.equalsIgnoreCase("anim1")) {
             Clear_Screen_Black(); 
-            currentAnimationNum = 1;   // Выбираем первую анимацию
+  currentAnimationNum = 1;   // Select the first animation.
             isPlayingAnimation = true; 
             sendBLEMessage("1\n");
             return;
         }
 
-        // ПРОВЕРКА: Если запросили ВТОРУЮ анимацию
+// Check whether the second animation was requested.
         if (argPart.equalsIgnoreCase("anim2")) {
             Clear_Screen_Black(); 
-            currentAnimationNum = 2;   // Выбираем вторую анимацию
+  currentAnimationNum = 2;   // Select the second animation.
             isPlayingAnimation = true; 
             sendBLEMessage("1\n");
             return;
         }
 
-        // Если запросили обычный файл, то останавливаем любую анимацию
+// Stop any animation before drawing a regular file.
         isPlayingAnimation = false;
         currentAnimationNum = 0;
 
@@ -333,13 +333,13 @@ void handleBLECommands() {
         }
 
         int idx = argPart.toInt();
-        int realIdx = idx - 1; // Человеческий отсчет с 1
+  int realIdx = idx - 1; // User-facing indexes start at 1.
 
         if (realIdx >= 0 && (size_t)realIdx < myBinFiles.size()) {
             String targetFile = myBinFiles[realIdx];
             //Serial.printf("[BLE ВЫВОД] Отрисовка: %s... ", targetFile.c_str());
 
-            // размеры экрана
+// Display dimensions.
             uint16_t imgW = 360; 
             uint16_t imgH = 360;
 
@@ -355,7 +355,7 @@ void handleBLECommands() {
             sendBLEMessage("0\n"); 
         }
     } 
-    // --- НЕИЗВЕСТНАЯ КОМАНДА ---
+// --- UNKNOWN COMMAND ---
     else {
         sendBLEMessage("Unknown. Use 'list' or 'show X'\n");
     }

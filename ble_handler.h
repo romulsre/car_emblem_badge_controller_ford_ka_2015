@@ -7,13 +7,13 @@
 #include <BLE2902.h>
 #include <vector>
 
-// Стандартные UUID для Nordic UART Service (NUS)
+// Standard UUIDs for the Nordic UART Service (NUS).
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
-// Отдельный сервис обновления прошивки. Бинарные блоки передаются только в
-// OTA_DATA, поэтому они не попадают в текстовый обработчик команд NUS.
+// Dedicated firmware-update service. Binary chunks use OTA_DATA only, so they
+// cannot reach the NUS text-command handler.
 #define OTA_SERVICE_UUID        "D4A00000-8A7B-4B9B-9D6A-5B2B4E5F0001"
 #define OTA_CONTROL_UUID        "D4A00000-8A7B-4B9B-9D6A-5B2B4E5F0002"
 #define OTA_DATA_UUID           "D4A00000-8A7B-4B9B-9D6A-5B2B4E5F0003"
@@ -26,11 +26,11 @@
 //   3. Write ASCII "END" to OTA_CONTROL_UUID and wait for "OK rebooting"
 //      on OTA_STATUS_UUID. "ABORT" cancels an unfinished update.
 
-// Инициализация BLE
+// Initialize BLE.
 void initBLEHandler();
 
-// Проверка входящих команд по BLE (вызывается в loop)
+// Process incoming BLE commands; call from loop().
 void handleBLECommands();
 
-// Функция отправки ответа обратно клиенту (1, 0 или список файлов)
+// Send a response back to the client.
 void sendBLEMessage(const String& message);

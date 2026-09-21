@@ -1,15 +1,14 @@
 #include "commands_handler.h"
-#include "SD_Card.h" 
-#include "IMG_SD.h"
+#include "MediaStorage.h"
 #include "Arduino.h"  
 
 extern std::vector<String> myBinFiles;
-// Объявляем внешнюю функцию сканирования картинок из main.ino
+// Image-list scan function implemented by the main sketch.
 extern void findAllImgInternal(const char* dirName, std::vector<String>& filesVector);
 extern bool startEyeAnimation(const String& colorArgument);
 extern void stopCurrentAnimation();
 
-// Вспомогательная функция для парсинга типа команды из текстовой строки
+// Converts a textual command to its command type.
 CommandType parseCommand(const String& cmdStr) {
     for (size_t i = 0; i < COMMAND_COUNT; i++) {
         if (cmdStr.equalsIgnoreCase(COMMAND_DICTIONARY[i].cmdString)) {
@@ -78,156 +77,38 @@ static void syncDirectory(const char* sdPath, const char* internalPath) {
     directory.close();
 }
 
-/**
- * @brief Автоматическое копирование папки анимации с SD-карты в LittleFS при старте
- */
+/** Copies the first animation directory from SD/MMC to LittleFS at startup. */
 void copyAnimationFromSD() {
     syncDirectory("/anim1", "/anim1");
-    return;
-    if (SD_MMC.cardType() == CARD_NONE) {
-        //Serial.println("[СИНХРОНИЗАЦИЯ] SD-карта отсутствует, пропускаем копирование анимации.");
-        return;
-    }
-
-    //Serial.println("\n--- Проверка папки анимации /anim1 на SD ---");
-    
-    // Проверяем, существует ли папка anim1 на SD
-    if (!SD_MMC.exists("/anim1")) {
-        //Serial.println("[SD] Папка /anim1 на карте не найдена.");
-        return;
-    }
-
-    // Создаем аналогичную папку во внутренней памяти, если её нет
-    if (!INTERNAL_FS.exists("/anim1")) {
-        INTERNAL_FS.mkdir("/anim1");
-        //Serial.println("[LittleFS] Создана папка /anim1 во внутренней памяти.");
-    }
-
-    int copiedCount = 0;
-    // Копируем файлы a1-1.bin до a1-6.bin
-    for (int i = 1; i <= 6; i++) {
-        String fileName = "/anim1/a1-" + String(i) + ".bin";
-        
-        // Проверяем наличие файла на SD
-        if (SD_MMC.exists(fileName)) {
-            bool needCopy = false;
-            
-            if (!INTERNAL_FS.exists(fileName)) {
-                needCopy = true;
-            } else {
-                // Если файл уже есть, сверяем его размер на всякий случай
-                File srcTest = SD_MMC.open(fileName, FILE_READ);
-                File dstTest = INTERNAL_FS.open(fileName, FILE_READ);
-                if (srcTest && dstTest && srcTest.size() != dstTest.size()) {
-                    needCopy = true;
-                }
-                if (srcTest) srcTest.close();
-                if (dstTest) dstTest.close();
-            }
-
-            if (needCopy) {
-                //Serial.printf("[СИНХРОНИЗАЦИЯ] Копирование %s в LittleFS... ", fileName.c_str());
-                
-                File sourceFile = SD_MMC.open(fileName, FILE_READ);
-                File destFile = INTERNAL_FS.open(fileName, FILE_WRITE);
-                
-                if (sourceFile && destFile) {
-                    // Копируем шустрым буфером по 4 КБ
-                    uint8_t buffer[4096];
-                    while (sourceFile.available()) {
-                        size_t bytesRead = sourceFile.read(buffer, sizeof(buffer));
-                        destFile.write(buffer, bytesRead);
-                        yield();
-                    }
-                    destFile.close();
-                    sourceFile.close();
-                    ////Serial.println("УСПЕХ");
-                    copiedCount++;
-                } else {
-                    if (sourceFile) sourceFile.close();
-                    if (destFile) destFile.close();
-                    ////Serial.println("ОШИБКА");
-                }
-            } else {
-                //Serial.printf("[LittleFS] Файл %s уже актуален.\n", fileName.c_str());
-            }
-        } else {
-            //Serial.printf("[SD ОШИБКА] Кадр %s отсутствует на карте!\n", fileName.c_str());
-        }
-    }
-    //Serial.printf("--- Синхронизация папки анимации завершена (Скопировано новых файлов: %d) ---\n", copiedCount);
 }
 
+/** Copies the second animation directory from SD/MMC to LittleFS at startup. */
 void copyAnimation2FromSD() {
     syncDirectory("/anim2", "/anim2");
-    return;
-    // Проверяем, существует ли папка /anim2 на SD-карте
-    if (!SD_MMC.exists("/anim2")) {
-        ////Serial.println("[SD] Папка /anim2 не найдена на SD-карте. Пропуск.");
-        return;
-    }
-
-    //Serial.println("[SD] Найдена папка /anim2. Начинаем копирование во внутреннюю память...");
-
-    // Создаем папку в LittleFS, если её еще нет
-    if (!INTERNAL_FS.exists("/anim2")) {
-        INTERNAL_FS.mkdir("/anim2");
-    }
-
-    // Проходим по файлам внутри /anim2 на SD и копируем их
-    File root = SD_MMC.open("/anim2");
-    if (!root || !root.isDirectory()) {
-        ////Serial.println("[ОШИБКА] Не удалось открыть директорию /anim2 на SD");
-        return;
-    }
-
-    File file = root.openNextFile();
-    while (file) {
-        if (!file.isDirectory()) {
-            String targetPath = "/anim2/" + String(file.name());
-            
-            // Если файла еще нет в LittleFS или размер отличается — копируем
-            if (!INTERNAL_FS.exists(targetPath) || INTERNAL_FS.open(targetPath, FILE_READ).size() != file.size()) {
-                //Serial.printf("[СИНХРОНИЗАЦИЯ] Копирование: %s -> %s\n", file.name(), targetPath.c_str());
-                
-                File destFile = INTERNAL_FS.open(targetPath, FILE_WRITE);
-                if (destFile) {
-                    uint8_t buf[512];
-                    size_t len;
-                    while ((len = file.read(buf, sizeof(buf))) > 0) {
-                        destFile.write(buf, len);
-                    }
-                    destFile.close();
-                }
-            }
-        }
-        file = root.openNextFile();
-    }
-    ////Serial.println("[УСПЕХ] Синхронизация /anim2 завершена!");
 }
 
 void initCommandsHandler() {
     ////Serial.println("\n--- Инициализация системы хранения данных ---");
     
-    // 1. Инициализация внутренней памяти
+    // Initialize internal storage.
     if (!INTERNAL_FS.begin(false)) { 
         ////Serial.println("[ИНФО] LittleFS не найдена, форматируем...");
         INTERNAL_FS.format();
         INTERNAL_FS.begin();
     }
     
-    // 2. Инициализация SD-карты
+    // Initialize the SD/MMC card.
     SD_Init();
     
-    // 3. Проверка статуса
+    // Check the initialization result.
     if (SD_MMC.cardType() == CARD_NONE) {
         ////Serial.println("[ОШИБКА] SD-карта не инициализирована.");
     } else {
         ////Serial.println("[УСПЕХ] SD-карта инициализирована.");
-        // Сначала копируем анимацию
+        // Copy animations first.
         copyAnimationFromSD();
         copyAnimation2FromSD();
-        // Затем проверяем новые файлы для карусели в /logos
+        // Then check /logos for new carousel files.
         checkNewFilesOnSD();
     }
 }
@@ -320,7 +201,7 @@ String executeCommand(const String& rawInput) {
         case CommandType::CMD_GET_SN: {
             uint64_t chipId = ESP.getEfuseMac();
             char sn[32];
-            // Формирует строку вида: SN-V1-A1B2C3D4E5F6
+            // Format: SN-V1-A1B2C3D4E5F6.
             snprintf(sn, sizeof(sn), "SN-V1-%04X%08X", (uint16_t)(chipId >> 32), (uint32_t)chipId);
             return "SN:\n" + String(sn) + "\n";
         }
@@ -413,7 +294,7 @@ void handleSerialCommands() {
 
             String targetFile = "";
 
-            // Проверяем, что ввёл пользователь: индекс или имя файла
+            // Determine whether the user supplied an index or file name.
             bool isIndex = true;
             for (size_t i = 0; i < argPart.length(); i++) {
                 if (!isDigit(argPart[i])) {
@@ -449,7 +330,7 @@ void handleSerialCommands() {
                 }
             }
 
-            // Останавливаем анимацию, если запущена, чтобы статика не перебивалась кадрами
+            // Stop animation so it cannot overwrite the static image.
             stopCurrentAnimation();
 
             //Serial.printf("[ВЫВОД] Отрисовка файла: %s... ", targetFile.c_str());
@@ -471,7 +352,7 @@ void handleSerialCommands() {
     }
 }
 
-// Автоматическая сверка (без копирования)
+// Compare files automatically without copying them.
 void checkNewFilesOnSD() {
     if (SD_MMC.cardType() == CARD_NONE) return;
     
@@ -505,7 +386,7 @@ void checkNewFilesOnSD() {
     }
 }
 
-// Активная синхронизация по команде 'sync'
+// Actively synchronize files for the "sync" command.
 void performSync() {
     if (SD_MMC.cardType() == CARD_NONE) {
         ////Serial.println("[СИНХРОНИЗАЦИЯ] Ошибка: SD-карта отсутствует.");
@@ -566,13 +447,13 @@ void performSync() {
         }
     }
     
-    // Обновляем список картинок карусели после синхронизации!
+    // Refresh the carousel image list after synchronization.
     findAllImgInternal("/", myBinFiles);
     
     //Serial.printf("[СИНХРОНИЗАЦИЯ] Завершено. Успешно: %d, Ошибок: %d. Список карусели обновлен.\n", syncedCount, errorCount);
 }
 
-// Копирование одного файла вручную
+// Copy one file manually.
 bool copyFileToInternal(const char* filename) {
     if (SD_MMC.cardType() == CARD_NONE) return false;
     
@@ -603,7 +484,7 @@ bool copyFileToInternal(const char* filename) {
     dst.close(); src.close();
     ////Serial.println("ГОТОВО");
     
-    // Обновляем список карусели после ручного добавления!
+    // Refresh the carousel list after a manual copy.
     findAllImgInternal("/", myBinFiles);
     
     return true;
@@ -619,7 +500,7 @@ bool deleteInternalFile(const char* filename) {
     if (INTERNAL_FS.remove(internalPath)) {
         //Serial.printf("[УДАЛЕНИЕ] Файл %s успешно удален.\n", filename);
         
-        // Обновляем список карусели после удаления!
+        // Refresh the carousel list after deletion.
         findAllImgInternal("/", myBinFiles);
         
         return true;

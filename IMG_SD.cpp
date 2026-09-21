@@ -1,9 +1,8 @@
-#include "IMG_SD.h"
+#include "MediaStorage.h"
 #include "FS.h"
 #include "SD_MMC.h"
 #include "Display_ST77916.h"
-#include "SD_Card.h"
-#include <vector> // Добавляем вектор для динамического массива
+#include <vector>
 
 #define IMG_BLOCK_ROWS 60
 static uint16_t block[EXAMPLE_LCD_WIDTH * IMG_BLOCK_ROWS];
@@ -31,12 +30,12 @@ static uint32_t read32(File &f)
   return v;
 }
 
-// Новая функция: ищет ВСЕ BMP-файлы и складывает пути в вектор
+// Collects all supported image paths from the selected directory.
 void findAllImg(const char *directory, std::vector<String> &imgList)
 {
   File root = SD_MMC.open(directory);
   if (!root || !root.isDirectory()) {
-    //Serial.println("Ошибка открытия директории");
+    //Serial.println("Failed to open directory");
     return;
   }
 
@@ -49,7 +48,7 @@ void findAllImg(const char *directory, std::vector<String> &imgList)
       lower.toLowerCase();
 
       if (lower.endsWith(".bin")) {//".bmp"
-        imgList.push_back(path); // Добавляем путь в массив
+        imgList.push_back(path); // Add the path to the result list.
       }
     }
     file = root.openNextFile();
@@ -59,6 +58,7 @@ void findAllImg(const char *directory, std::vector<String> &imgList)
 
 bool Draw_BMP_From_SD(const char *path, uint16_t x, uint16_t y)
 {
+  if (x >= EXAMPLE_LCD_WIDTH || y >= EXAMPLE_LCD_HEIGHT) return false;
   File bmp = SD_MMC.open(path, FILE_READ);
   if (!bmp) {
     //Serial.println("BMP open failed");
@@ -141,126 +141,70 @@ bool Draw_BMP_From_SD(const char *path, uint16_t x, uint16_t y)
   return true;
 }
 
-// Функция для отрисовки RAW BIN (RGB565) файла
-bool Draw_BIN_From_SD(const char *path, uint16_t x, uint16_t y, uint16_t imgW, uint16_t imgH)
-{
-  File binFile = SD_MMC.open(path, FILE_READ);
-  if (!binFile) {
-    //Serial.println("BIN open failed");
-    return false;
-  }
+// Renders a raw RGB565 image from an already-open storage file.
+static bool drawBin(File& binFile, uint16_t x, uint16_t y, uint16_t imageWidth, uint16_t imageHeight) {
+  if (x >= EXAMPLE_LCD_WIDTH || y >= EXAMPLE_LCD_HEIGHT) return false;
 
-  // Ограничиваем область рисования под размеры экрана
-  uint16_t drawW = min((int32_t)(EXAMPLE_LCD_WIDTH - x), (int32_t)imgW);
-  uint16_t drawH = min((int32_t)(EXAMPLE_LCD_HEIGHT - y), (int32_t)imgH);
+  const uint16_t drawWidth = min(EXAMPLE_LCD_WIDTH - x, imageWidth);
+  const uint16_t drawHeight = min(EXAMPLE_LCD_HEIGHT - y, imageHeight);
+  const size_t rowSizeInBytes = static_cast<size_t>(drawWidth) * sizeof(uint16_t);
 
-  // Размер одной строки в байтах (2 байта на пиксель в RGB565)
-  uint32_t rowSizeInBytes = drawW * 2; 
-
-  // Построчно читаем из SD прямо в наш массив block
-  for (uint16_t blockY = 0; blockY < drawH; blockY += IMG_BLOCK_ROWS) {
-    uint16_t rowsThisBlock = IMG_BLOCK_ROWS;
-
-    if (blockY + rowsThisBlock > drawH) {
-      rowsThisBlock = drawH - blockY;
+  for (uint16_t blockY = 0; blockY < drawHeight; blockY += IMG_BLOCK_ROWS) {
+    const uint16_t rowsRemaining = drawHeight - blockY;
+    const uint16_t rowsThisBlock = rowsRemaining < IMG_BLOCK_ROWS ? rowsRemaining : IMG_BLOCK_ROWS;
+    for (uint16_t blockRow = 0; blockRow < rowsThisBlock; ++blockRow) {
+      uint16_t* row = &block[static_cast<size_t>(blockRow) * drawWidth];
+      if (binFile.read(reinterpret_cast<uint8_t*>(row), rowSizeInBytes) != rowSizeInBytes) return false;
     }
-
-    // Заполняем блок строками
-    for (uint16_t blockRow = 0; blockRow < rowsThisBlock; blockRow++) {
-      // Считаем указатель, куда в массиве block положить текущую строку
-      uint16_t *blockBufferPtr = &block[(uint32_t)blockRow * drawW];
-      
-      // Читаем ВСЮ строку пикселей за ОДНУ операцию прямо в память дисплея!
-      binFile.read((uint8_t*)blockBufferPtr, rowSizeInBytes);
-    }
-
-    // Отправляем готовый блок на дисплей
-    LCD_addWindow(
-      x,
-      y + blockY,
-      x + drawW - 1,
-      y + blockY + rowsThisBlock - 1,
-      block
-    );
+    LCD_addWindow(x, y + blockY, x + drawWidth - 1,
+                  y + blockY + rowsThisBlock - 1, block);
   }
-
-  binFile.close();
   return true;
 }
 
-// РЕАЛИЗАЦИЯ НОВОЙ ФУНКЦИИ ДЛЯ ВНУТРЕННЕЙ ПАМЯТИ:
-bool Draw_BIN_From_Internal(const char *path, uint16_t x, uint16_t y, uint16_t imgW, uint16_t imgH)
-{
-  // Открываем файл из внутренней памяти LittleFS
+bool Draw_BIN_From_SD(const char* path, uint16_t x, uint16_t y, uint16_t imageWidth, uint16_t imageHeight) {
+  File binFile = SD_MMC.open(path, FILE_READ);
+  if (!binFile) return false;
+  const bool drawn = drawBin(binFile, x, y, imageWidth, imageHeight);
+  binFile.close();
+  return drawn;
+}
+
+bool Draw_BIN_From_Internal(const char* path, uint16_t x, uint16_t y, uint16_t imageWidth, uint16_t imageHeight) {
   File binFile = LittleFS.open(path, FILE_READ);
   if (!binFile) {
-    Serial.printf("BIN из LittleFS open failed: %s\n", path);
+    Serial.printf("Could not open BIN from LittleFS: %s\n", path);
     return false;
   }
-
-  // Ограничиваем область рисования под размеры экрана
-  uint16_t drawW = min((int32_t)(EXAMPLE_LCD_WIDTH - x), (int32_t)imgW);
-  uint16_t drawH = min((int32_t)(EXAMPLE_LCD_HEIGHT - y), (int32_t)imgH);
-
-  // Размер одной строки в байтах (2 байта на пиксель в RGB565)
-  uint32_t rowSizeInBytes = drawW * 2; 
-
-  // Построчно читаем из LittleFS прямо в массив block
-  for (uint16_t blockY = 0; blockY < drawH; blockY += IMG_BLOCK_ROWS) {
-    uint16_t rowsThisBlock = IMG_BLOCK_ROWS;
-
-    if (blockY + rowsThisBlock > drawH) {
-      rowsThisBlock = drawH - blockY;
-    }
-
-    // Заполняем блок строками
-    for (uint16_t blockRow = 0; blockRow < rowsThisBlock; blockRow++) {
-      // Считаем указатель, куда в массиве block положить текущую строку
-      uint16_t *blockBufferPtr = &block[(uint32_t)blockRow * drawW];
-      
-      // Читаем ВСЮ строку пикселей за ОДНУ операцию
-      binFile.read((uint8_t*)blockBufferPtr, rowSizeInBytes);
-    }
-
-    // Отправляем готовый блок на дисплей
-    LCD_addWindow(
-      x,
-      y + blockY,
-      x + drawW - 1,
-      y + blockY + rowsThisBlock - 1,
-      block
-    );
-  }
-
+  const bool drawn = drawBin(binFile, x, y, imageWidth, imageHeight);
   binFile.close();
-  return true;
+  return drawn;
 }
 
 /**
- * @brief Быстрая очистка всего экрана черным цветом с использованием буфера block
+ * @brief Quickly clears the screen to black using the shared block buffer.
  */
 void Clear_Screen_Black() {
-    // 1. Сначала полностью заполняем наш буфер block нулями (черный цвет)
-    // Размер буфера в пикселях: ширина экрана * количество строк в блоке
+    // Fill the complete block buffer with black pixels.
     uint32_t totalPixelsInBlock = (uint32_t)EXAMPLE_LCD_WIDTH * IMG_BLOCK_ROWS;
     memset(block, 0, totalPixelsInBlock * sizeof(uint16_t));
 
-    // 2. Попиксельно закрашиваем весь экран блоками сверху вниз
+    // Paint the screen from top to bottom in blocks.
     for (uint16_t blockY = 0; blockY < EXAMPLE_LCD_HEIGHT; blockY += IMG_BLOCK_ROWS) {
         uint16_t rowsThisBlock = IMG_BLOCK_ROWS;
 
-        // Если последний блок выходит за границы экрана, обрезаем его
+        // Clamp the final block to the display boundary.
         if (blockY + rowsThisBlock > EXAMPLE_LCD_HEIGHT) {
             rowsThisBlock = EXAMPLE_LCD_HEIGHT - blockY;
         }
 
-        // Отправляем черный блок на дисплей
+        // Send the black block to the display.
         LCD_addWindow(
             0,                          // x_start
             blockY,                     // y_start
             EXAMPLE_LCD_WIDTH - 1,      // x_end
             blockY + rowsThisBlock - 1, // y_end
-            block                       // указатель на зануленный буфер
+            block                       // Pointer to the cleared buffer.
         );
     }
 }
