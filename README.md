@@ -14,3 +14,6 @@ commands_handler is for serial and BLE controle (like a FS features (copy, delet
 logo_anim and eye_animation is method for draw the image using basic primitives (circle, line, rectangle)
 
 My custom partitions table should be add to compilator.
+
+
+Contact: romulsre@gmail.com
