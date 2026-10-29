@@ -19,7 +19,7 @@ logo_anim and eye_animation is method for draw the image using basic primitives 
 My custom partitions table should be add to compilator.
 
 
-Any question, contact me: romulsre@gmail.com
+Any question, contact me: irziss2111@gmail.com
 
 My TG channel: https://t.me/reparoseletronica
 

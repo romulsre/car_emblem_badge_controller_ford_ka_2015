@@ -11,7 +11,7 @@ Address:
 # TON
 Address:
 
-UQChTUwccyl1mcumO2sX-WQgefeAFKFgC-K3xEf9jLo4m3Jt
+UQBaJ_sdd0uvLf9MuIrFV5Yx3h_ezIwKkSPZdsghrnEpOJ7a
 
 ⚠️ Send only TON or supported jettons on the TON network.
 
