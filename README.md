@@ -1,4 +1,7 @@
-# car_emblem_badge_controller_ford_ka_2015
+# My developer logo
+![project-logo Picture](./misc/logo.png)
+
+# Car_emblem_badge_controller_ford_ka_2015
 Car Emblem Badge Controller Project
 Based on Waveshare ESP32-S3-TOUCH-LCD-1.85 development board
 The libararies from list are standart for this board:
@@ -16,4 +19,7 @@ logo_anim and eye_animation is method for draw the image using basic primitives 
 My custom partitions table should be add to compilator.
 
 
-Contact: romulsre@gmail.com
+Any question, contact me: romulsre@gmail.com
+
+# Working example
+![project-example Picture](./misc/device-ilustration.jpg)
