@@ -6,6 +6,7 @@ The logo library should be loaded into the controller via an SD card. Directory 
 In this repository, I have attached two logos: BMW and Ford.
 
 Any question, contact me: romulsre@gmail.com
+My TG channel: https://t.me/reparoseletronica
 
 # Working example
 ![app-example Picture](./misc/screen-shot.jpg)
