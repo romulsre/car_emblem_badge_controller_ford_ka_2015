@@ -30,4 +30,4 @@ My TG channel: https://t.me/reparoseletronica
 If you find this project useful, consider supporting its development:
 
 ➡️ Donate
-"https://github.com/romulsre/car_emblem_badge_controller_ford_ka_2015/DONATE.md"
+"https://github.com/romulsre/car_emblem_badge_controller_ford_ka_2015/blob/main/DONATE.md"
