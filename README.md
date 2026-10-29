@@ -20,6 +20,7 @@ My custom partitions table should be add to compilator.
 
 
 Any question, contact me: romulsre@gmail.com
+
 My TG channel: https://t.me/reparoseletronica
 
 # Working example
