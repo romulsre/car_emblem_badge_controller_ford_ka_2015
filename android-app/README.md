@@ -2,6 +2,8 @@
 ![project-logo Picture](./misc/logo.png)
 
 # ble_badgecontrol.apk
+Built this project using updated "Android studio"
+
 The logo library should be loaded into the controller via an SD card. Directory /logos/xxxx.bin
 In this repository, I have attached two logos: BMW and Ford.
 
